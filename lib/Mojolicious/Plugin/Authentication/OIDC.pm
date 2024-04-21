@@ -2,6 +2,8 @@ package Mojolicious::Plugin::Authentication::OIDC;
 use v5.26;
 use warnings;
 
+# ABSTRACT: OpenID Connect implementation integrated into Mojolicious
+
 use Mojo::Base 'Mojolicious::Plugin';
 
 use experimental qw(signatures);
