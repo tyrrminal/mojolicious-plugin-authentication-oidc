@@ -29,17 +29,29 @@ use experimental qw(signatures);
 
 Readonly::Array my @REQUIRED_PARAMS => qw(
   client_secret
-  well_known_url public_key
-  login_path success_path
+  well_known_url 
+  public_key
+);
+Readonly::Array my @ALLOWED_PARAMS => qw(
+  client_id on_login on_activity
 );
 Readonly::Hash  my %DEFAULT_PARAMS  => (
+  login_path    => '/auth/login',
+  redirect_path => '/auth',
+  make_routes   => 1,
+
+  on_success    => sub ($c, $token) { $c->session(token => $token); $c->redirect_to('/login/success') },
+  on_error      => sub ($c, $error) { $c->render(json => $error) },
+
+  get_token     => sub ($c)            { $c->session('token') },
+  get_user      => sub ($token)        { $token },
+  get_roles     => sub ($user, $token) { $user ? [] : undef },
+);
+Readonly::Hash my %DEFAULT_CONSTANTS => (
   scope         => 'openid',
   response_type => 'code',
-  grant_type    => 'authentication_code',
-  make_routes   => 1,
+  grant_type    => 'authorization_code',
 );
-#params with runtime defaults: client_id
-#conditionally optional params: redirect_path
 
 =head1 METHODS
 
