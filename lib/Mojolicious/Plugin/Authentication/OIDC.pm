@@ -13,10 +13,41 @@ integrated into Mojolicious
 
 =head1 SYNOPSIS
 
+  $self->plugin('Authentication::OIDC' => {
+    client_secret  => '...',
+    well_known_url => 'https://idp/realms/master/.well-known/openid-configuration',
+    public_key     => "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
+  });
+
+  # in controller
+  say "Hi " . $c->current_user->firstname;
+
+  use Array::Utils qw(intersect);
+  if(intersect($c->current_user_roles->@*, qw(admin))) { ... }
+
 =head1 DESCRIPTION
 
 Mojolicious plugin for L<OpenID Connect|https://openid.net/developers/how-connect-works/>
-authentication.
+authentication. Designed to work with an OpenID Connect provider like Keycloak,
+in confidential access mode. Its design goal is to be configured "all at once"
+and then little-to-no effort should be needed to support it elsewhere -- this is 
+largely achieved via hooks (L</on_success>, L</on_error>, L</on_login>, 
+L</on_activity>) and handlers (L</get_token>, L</get_user>, L</get_roles>)
+
+Controller actions C<OpenIDConnect#redirect> and C<OpenIDConnect#login> are
+registered, and can be mapped to routes implicitly (see L</make_routes>) or 
+manually routed to (e.g., via L<Mojolicious::Plugin::OpenAPI>).
+
+For the auth workflow, clients should be sent to C<OpenIDConnect#redirect> (via 
+L</redirect_path> if L</make_routes> is enabled). Once the client authenticates
+to the identity server, they'll be sent to C<OpenIDConnect#login> (via 
+L</login_path>, again, if L</make_routes> is enabled). Upon successful login, the
+L</on_login> hook will be called, followed by the L</on_success> hook, which
+should send the client to a post-login page. Then, on every server access 
+on/after login, the L</on_activity> hook will be called.
+
+Controllers may get information about the logged in user via the 
+L</current_user> and L</current_user_roles> helper methods.
 
 =cut
 
@@ -61,7 +92,151 @@ L<Mojolicious::Plugin> and imeplements the following new ones
 
 =head2 register( \%params )
 
-Register plugin in L<Mojolicious> application.
+Register plugin in L<Mojolicious> application, including registering 
+L<Mojolicious::Plugin::Authentication::OIDC::Controller::OpenIDConnect> as a 
+Mojolicious controller.
+
+Configuration is done via the C<\%params> HashRef, given the following keys
+
+=head4 make_routes
+
+B<Optional>
+
+A flag to indicate whether routes should be registered for L</redirect_path> and
+L</login_path> pointing to 
+L<Mojolicious::Plugin::Authentication::OIDC::Controller::OpenIDConnect/redirect>
+and L<Mojolicious::Plugin::Authentication::OIDC::Controller::OpenIDConnect/login>,
+respectively. Set to false if you are handling these routes some other way, for
+instance in a L<Mojolicious::PLugin::OpenAPI> spec.  
+
+Default: true
+
+=head4 client_id
+
+B<Optional>
+
+The application's unique identifier, to the auhorization server
+
+Default: the application moniker (lowercase)
+
+=head4 client_secret
+
+B<Required>
+
+A secret value known to the authorization server, specific to this application
+
+=head4 well_known_url 
+
+B<Required>
+
+A discovery endpoint that informs the application of the authorization server's
+specific configuration and capabilities
+
+Example: C<https://idp.domain.com/realms/master/.well-known/openid-configuration>
+
+=head4 public_key
+
+B<Required>
+
+The RSA public key corresponding to the private key with which the authorization
+tokens are signed by the authorization server. Format is a PEM/DER/JWT string
+accepted by L<Crypt::JWT/decode_jwt>'s C<key> parameter.
+
+=head4 redirect_path
+
+B<Optional>
+
+The path for the route which redirects users to the authorization server. Only
+used when L</make_routes> is enabled, for configuring the path of that route.
+
+Default: C</auth>
+
+=head4 login_path
+
+B<Optional>
+
+The path section of the URL to be used as the OIDC C<redirect_uri>. The full 
+URL will be constructed based on the scheme/host/port of the request. This
+path is also used for route registration if L</make_routes> is enabled.
+
+Default: C</auth/login>
+
+=head4 get_user ( $token )
+
+B<Optional>
+
+A callback that's given the auth token data as its only argument. It should
+return the application's C<user> instance corresponding to that data (e.g., a 
+database record object), creating any references as necessary.
+
+Default: Simply returns the auth token data as a HashRef
+
+
+=head4 get_token ( $controller )
+
+B<Optional>
+
+A callback that's given a Mojolicious controller as its only argument. It should
+return the encoded authorization token. This allows the application to choose
+where and how the token is stored on the client side and sent to the server.
+
+Default: returns the C<token> value of the Mojo session
+
+=head4 get_roles ( $user, $token )
+
+B<Optional>
+
+Given a C<user> instance (produced by L</get_user>) and a decoded authorization
+token as arguments, returns an ArrayRef of roles pertaining to that user.
+
+Default: returns an empty ArrayRef
+
+=head4 on_login ( $controller, $user )
+
+B<Optional>
+
+A hook to allow the application to respond to a successful user login, such as
+updating the user's C<last_login> date. 
+
+Default: C<undef>
+
+=head4 on_activity ( $controller, $user )
+
+B<Optional>
+
+A hook to allow the application to respond to any request by a logged-in user,
+such as updating the user's C<last_activity> date.
+
+Default: C<undef>
+
+=head4 on_success ( $controller, $token )
+
+B<Optional>
+
+A hook invoked when the user's authorization request succeeds. This code should 
+address storage of the authentication token on the frontend.
+
+Default: Stores the (encrypted) token in the C<token> key of the Mojo session
+and redirects to C</login/success>
+
+=head4 on_error
+
+B<Optional>
+
+A hook invoked when the user's authorization request fails.
+
+Default: renders the Authorization Server's response (JSON)
+
+=head2 current_user
+
+Returns the user record (from L</get_user>) for the currently logged in user.
+If no user is logged in, or any failure occurs in reading their access token,
+returns C<undef>
+
+=head2 current_user_roles
+
+If a user is logged in, returns their roles (as determined by L</get_roles>). 
+Otherwise, returns C<undef>
 
 =cut
 
