@@ -53,29 +53,66 @@ Register plugin in L<Mojolicious> application.
 =cut
 
 sub register($self, $app, $params) {
-  my %conf = (
-    %DEFAULT_PARAMS,
-    client_id => lc($app->moniker)
-  );
-  $params = ref($params) eq 'HashRef' ? $params : {};
-  foreach (@REQUIRED_PARAMS) {
-    die("Param '$_' is required") unless(exists($params->{$_}));
-    $conf{$_} = $params->{$_};
-  }
-  die("Param 'redirect_path' is required when 'make_routes' is enabled") if($conf{make_routes} && !exists($params->{redirect_path}));
+  # Parameter handling
+  my %conf = (%DEFAULT_CONSTANTS, %DEFAULT_PARAMS, client_id => lc($app->moniker));
+  $conf{$_} = $params->{$_} foreach (grep {exists($params->{$_})} ( keys(%DEFAULT_PARAMS), @REQUIRED_PARAMS, @ALLOWED_PARAMS ));
+  # die if required/conditionally required params aren't found
+  foreach (@REQUIRED_PARAMS) { die("Required param '$_' not found") unless(defined($conf{$_})) }
+  die("Required param 'redirect_path' not found") if($conf{make_routes} && !defined($conf{redirect_path}));
 
-  my $ua = Mojo::UserAgent->new();
-  my $resp = $ua->get($conf{well_known_url});
-  $conf{auth_endpoint} = $resp->res->json->{authorization_endpoint};
-  $conf{token_endpoint} = $resp->res->json->{token_endpoint};
+  # wrap success handler so that we can call login handler before finishing the req
+  my $success_handler = $conf{on_success};
+  $conf{on_success} = sub($c, $token) {
+    my $token_data = $c->_oidc_token($token);
+    my $user = $conf{get_user}->($c, $token_data);
+    $conf{on_login}->($c, $user) if($conf{on_login});
+    return $success_handler->($c, $token);
+  };
 
+  # Add our controller to the namespace for calling via routes or, e.g., OpenAPI
+  push($app->routes->namespaces->@*, 'Mojolicious::Plugin::Authentication::OIDC::Controller');
+
+  # Fetch actual endpoints from well-known URL
+  my $resp = Mojo::UserAgent->new()->get($conf{well_known_url});
+  die("Unable to determine OIDC endpoints (" . $resp->res->error->{message}.")\n") if($resp->res->is_error);
+  @conf{qw(auth_endpoint token_endpoint)} = @{$resp->res->json}{qw(authorization_endpoint token_endpoint)};
+
+  # internal helper for stored parameters (only to be used by OpenIDConnect controller)
   $app->helper(
     _oidc_params => sub {
-      return {%conf}
+      return {map { $_ => $conf{$_} } qw(auth_endpoint scope response_type login_path token_endpoint client_id client_secret grant_type on_error on_success)}
     }
   );
 
-  push($app->routes->namespaces->@*, 'Mojolicious::Plugin::Authentication::OIDC::Controller');
+  # internal helper for decoded auth token. Pass the token in, or it'll be retrieved
+  # via `get_token` handler
+  $app->helper(
+    _oidc_token => sub($c, $token = undef) {
+      return decode_jwt(token => ($token // $conf{get_token}->($c)), key => \$conf{public_key});
+    }
+  );
+
+  # public helper to access current user and OIDC roles
+  $app->helper(
+    current_user => sub($c) {
+      return $conf{get_user}->($c->_oidc_token)
+    }
+  );
+  $app->helper(
+    current_user_roles => sub($c) {
+      my ($user, $token);
+      try {
+        $token = $c->_oidc_token;
+        $user = $c->current_user; 
+      } catch($e) { return undef } 
+      return $conf{get_roles}->($user, $token);
+    }
+  );
+
+  # if `on_activity` handler exists, call it from a before_dispatch hook
+  $app->hook(before_dispatch => sub($c) { my $u; try { $u = $c->current_user; } catch($e) {} $conf{on_activity}->($c, $u) if($u) }) if($conf{on_activity});
+  # if `make_routes` is true, register our controller actions at the appropriate paths
+  # otherwise, it's up to the downstream code to do this, e.g., via OpenAPI spec
   if($conf{make_routes}) {
     $app->routes->get($conf{redirect_path})->to("OpenIDConnect#redirect");
     $app->routes->get($conf{login_path})->to('OpenIDConnect#login');
