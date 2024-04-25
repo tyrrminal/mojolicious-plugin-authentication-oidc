@@ -56,6 +56,7 @@ use Mojo::Base 'Mojolicious::Plugin';
 use Crypt::JWT qw(decode_jwt);
 use Mojo::UserAgent;
 use Readonly;
+use Syntax::Keyword::Try;
 
 use experimental qw(signatures);
 
