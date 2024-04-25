@@ -1,5 +1,5 @@
-package Mojolicious::Plugin::Authentication::OIDC::Controller::Auth;
-use v5.38;
+package Mojolicious::Plugin::Authentication::OIDC::Controller::OpenIDConnect;
+use v5.26;
 
 use Mojo::Base 'Mojolicious::Controller';
 
