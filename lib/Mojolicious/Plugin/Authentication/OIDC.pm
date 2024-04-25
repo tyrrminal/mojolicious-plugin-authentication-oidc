@@ -253,7 +253,7 @@ sub register($self, $app, $params) {
   my $success_handler = $conf{on_success};
   $conf{on_success} = sub($c, $token) {
     my $token_data = $c->_oidc_token($token);
-    my $user = $conf{get_user}->($c, $token_data);
+    my $user = $conf{get_user}->($token_data);
     $conf{on_login}->($c, $user) if($conf{on_login});
     return $success_handler->($c, $token);
   };
