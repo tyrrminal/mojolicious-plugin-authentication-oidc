@@ -22,6 +22,7 @@ authentication.
 
 use Mojo::Base 'Mojolicious::Plugin';
 
+use Crypt::JWT qw(decode_jwt);
 use Mojo::UserAgent;
 use Readonly;
 
