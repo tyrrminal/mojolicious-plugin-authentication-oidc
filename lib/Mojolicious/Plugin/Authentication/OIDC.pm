@@ -274,12 +274,12 @@ sub register($self, $app, $params) {
   # Fetch actual endpoints from well-known URL
   my $resp = Mojo::UserAgent->new()->get($conf{well_known_url});
   die("Unable to determine OIDC endpoints (" . $resp->res->error->{message}.")\n") if($resp->res->is_error);
-  @conf{qw(auth_endpoint token_endpoint)} = @{$resp->res->json}{qw(authorization_endpoint token_endpoint)};
+  @conf{qw(auth_endpoint token_endpoint logout_endpoint)} = @{$resp->res->json}{qw(authorization_endpoint token_endpoint end_session_endpoint)};
 
   # internal helper for stored parameters (only to be used by OpenIDConnect controller)
   $app->helper(
     _oidc_params => sub {
-      return {map { $_ => $conf{$_} } qw(auth_endpoint scope response_type login_path token_endpoint client_id client_secret grant_type on_error on_success)}
+      return {map { $_ => $conf{$_} } qw(auth_endpoint scope response_type login_path token_endpoint client_id client_secret grant_type on_error on_success logout_endpoint)}
     }
   );
 

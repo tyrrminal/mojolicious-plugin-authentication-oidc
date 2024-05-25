@@ -92,6 +92,27 @@ sub login($self) {
       $self->_oidc_params->{on_error}->($self, $resp->res->json);
     }
   }
+
+  sub session($self) {
+    my $return_token = $self->param('t');
+
+    my ($token, $data) = ($self->_oidc_token(undef, 0),{});
+    try { $data= $self->_oidc_token } catch($e) {}
+    $data->{token} = $token if($return_token);
+    $self->render(json => $data)
+  }
+
+  sub logout($self) {
+    my $idp_url = Mojo::URL->new($self->_oidc_params->{logout_endpoint});
+
+    my $success_url = $self->param('ref');
+
+    $idp_url->query({
+      client_id                 => $self->_oidc_params->{client_id},
+      post_logout_redirect_uri  => $success_url,
+    });
+    $self->redirect_to($idp_url)
+  }
 }
 
 =head1 AUTHOR
