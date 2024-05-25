@@ -73,7 +73,7 @@ Readonly::Hash  my %DEFAULT_PARAMS  => (
   redirect_path => '/auth',
   make_routes   => 1,
 
-  on_success    => sub ($c, $token) { $c->session(token => $token); $c->redirect_to('/login/success') },
+  on_success    => sub ($c, $token, $url) { $c->session(token => $token); $c->redirect_to($url) },
   on_error      => sub ($c, $error) { $c->render(json => $error) },
 
   get_token     => sub ($c)            { $c->session('token') },
@@ -261,11 +261,11 @@ sub register($self, $app, $params) {
 
   # wrap success handler so that we can call login handler before finishing the req
   my $success_handler = $conf{on_success};
-  $conf{on_success} = sub($c, $token) {
+  $conf{on_success} = sub($c, $token, $url) {
     my $token_data = $c->_oidc_token($token);
     my $user = $conf{get_user}->($token_data);
     $conf{on_login}->($c, $user) if($conf{on_login});
-    return $success_handler->($c, $token);
+    return $success_handler->($c, $token, $url);
   };
 
   # Add our controller to the namespace for calling via routes or, e.g., OpenAPI

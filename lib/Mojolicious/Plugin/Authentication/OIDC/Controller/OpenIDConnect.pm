@@ -86,7 +86,7 @@ sub login($self) {
       # is invalid or has been re-encrypted, then we throw it away and call
       # error handler
       $self->_oidc_token($token);
-      return $self->_oidc_params->{on_success}->($self, $token);
+      return $self->_oidc_params->{on_success}->($self, $token, $success_url);
     } catch($e) {
       $self->log->error($e);
       $self->_oidc_params->{on_error}->($self, $resp->res->json);
