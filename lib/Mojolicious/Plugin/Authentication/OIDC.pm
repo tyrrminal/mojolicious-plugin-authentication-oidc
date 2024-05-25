@@ -20,10 +20,10 @@ integrated into Mojolicious
   });
 
   # in controller
-  say "Hi " . $c->current_user->firstname;
+  say "Hi " . $c->authn->current_user->firstname;
 
   use Array::Utils qw(intersect);
-  if(intersect($c->current_user_roles->@*, qw(admin))) { ... }
+  if(intersect($c->authn->current_user_roles->@*, qw(admin))) { ... }
 
 =head1 DESCRIPTION
 
@@ -87,6 +87,7 @@ Readonly::Hash my %DEFAULT_CONSTANTS => (
   response_type => 'code',
   grant_type    => 'authorization_code',
 );
+Readonly::Scalar my $DEFAULT_PREFIX => 'authn';
 
 =head1 METHODS
 
@@ -252,6 +253,13 @@ Otherwise, returns C<undef>
 =cut
 
 sub register($self, $app, $params) {
+  # Prefix handling
+  my $prefix = $params->{prefix} // $DEFAULT_PREFIX;
+  $prefix .= '.' if($prefix);
+  my $params_helper = "__oidc_params";
+  my $token_helper = "__oidc_token";
+  my $current_user_helper = "${prefix}current_user";
+  my $current_user_roles_helper = "${prefix}current_user_roles";
   # Parameter handling
   my %conf = (%DEFAULT_CONSTANTS, %DEFAULT_PARAMS, client_id => lc($app->moniker));
   $conf{$_} = $params->{$_} foreach (grep {exists($params->{$_})} ( keys(%DEFAULT_PARAMS), @REQUIRED_PARAMS, @ALLOWED_PARAMS ));
@@ -277,16 +285,14 @@ sub register($self, $app, $params) {
   @conf{qw(auth_endpoint token_endpoint logout_endpoint)} = @{$resp->res->json}{qw(authorization_endpoint token_endpoint end_session_endpoint)};
 
   # internal helper for stored parameters (only to be used by OpenIDConnect controller)
-  $app->helper(
-    _oidc_params => sub {
+  $app->helper($params_helper => sub {
       return {map { $_ => $conf{$_} } qw(auth_endpoint scope response_type login_path token_endpoint client_id client_secret grant_type on_error on_success logout_endpoint)}
     }
   );
 
   # internal helper for decoded auth token. Pass the token in, or it'll be retrieved
   # via `get_token` handler
-  $app->helper(
-    _oidc_token => sub($c, $token = undef, $decode = 1) {
+  $app->helper($token_helper => sub($c, $token = undef, $decode = 1) {
       my $t = $token // $conf{get_token}->($c);
       return $t unless($decode);
       return decode_jwt(token => ($token // $conf{get_token}->($c)), key => \$conf{public_key});
@@ -294,17 +300,15 @@ sub register($self, $app, $params) {
   );
 
   # public helper to access current user and OIDC roles
-  $app->helper(
-    current_user => sub($c) {
+  $app->helper($current_user_helper => sub($c) {
       return $conf{get_user}->($c->_oidc_token)
     }
   );
-  $app->helper(
-    current_user_roles => sub($c) {
+  $app->helper($current_user_roles_helper => sub($c) {
       my ($user, $token);
       try {
         $token = $c->_oidc_token;
-        $user = $c->current_user; 
+        $user = $c->renderer($current_user_helper)->(); 
         my @roles = $conf{get_roles}->($user, $token)->@*;
         @roles = grep { defined } map { $conf{role_map}->{$_} } @roles if(defined($conf{role_map}));
         return [@roles];
@@ -314,7 +318,7 @@ sub register($self, $app, $params) {
   );
 
   # if `on_activity` handler exists, call it from a before_dispatch hook
-  $app->hook(before_dispatch => sub($c) { my $u; try { $u = $c->current_user; } catch($e) {} $conf{on_activity}->($c, $u) if($u) }) if($conf{on_activity});
+  $app->hook(before_dispatch => sub($c) { my $u; try { $u = $c->renderer($current_user_helper)->(); } catch($e) {} $conf{on_activity}->($c, $u) if($u) }) if($conf{on_activity});
   # if `make_routes` is true, register our controller actions at the appropriate paths
   # otherwise, it's up to the downstream code to do this, e.g., via OpenAPI spec
   if($conf{make_routes}) {
