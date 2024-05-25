@@ -54,6 +54,10 @@ my sub make_app_url($self, $path = '/') {
 
 sub redirect($self) {
   my $idp_url = Mojo::URL->new($self->_oidc_params->{auth_endpoint});
+
+  my $success_url = $self->param('ref');
+  $self->cookie(oidc_login_redirect => $success_url);
+
   $idp_url->query({
     client_id     => $self->_oidc_params->{client_id},
     scope         => $self->_oidc_params->{scope},
@@ -68,6 +72,9 @@ sub login($self) {
   my $ua   = Mojo::UserAgent->new();
   my $url  = Mojo::URL->new($self->_oidc_params->{token_endpoint})
     ->userinfo(join(':', $self->_oidc_params->{client_id}, $self->_oidc_params->{client_secret}));
+
+  my $success_url = $self->cookie('oidc_login_redirect');
+  $self->cookie(oidc_login_redirect => '', {expires => 1 });
     
   my $resp = $ua->post(
     $url => form => {
