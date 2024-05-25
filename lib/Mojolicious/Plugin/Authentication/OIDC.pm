@@ -286,7 +286,9 @@ sub register($self, $app, $params) {
   # internal helper for decoded auth token. Pass the token in, or it'll be retrieved
   # via `get_token` handler
   $app->helper(
-    _oidc_token => sub($c, $token = undef) {
+    _oidc_token => sub($c, $token = undef, $decode = 1) {
+      my $t = $token // $conf{get_token}->($c);
+      return $t unless($decode);
       return decode_jwt(token => ($token // $conf{get_token}->($c)), key => \$conf{public_key});
     }
   );
