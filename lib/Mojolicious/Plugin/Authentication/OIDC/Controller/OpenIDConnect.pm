@@ -53,7 +53,7 @@ my sub make_app_url($self, $path = '/') {
 }
 
 sub redirect($self) {
-  my $oidc_params = $self->get_helper('__oidc_params')->();
+  my $oidc_params = $self->app->renderer->get_helper('__oidc_params')->($self);
   my $idp_url = Mojo::URL->new($oidc_params->{auth_endpoint});
 
   my $success_url = $self->param('ref');
@@ -69,7 +69,7 @@ sub redirect($self) {
 }
 
 sub login($self) {
-  my $oidc_params = $self->get_helper('__oidc_params')->();
+  my $oidc_params = $self->app->renderer->get_helper('__oidc_params')->($self);
   my $code = $self->param('code');
   my $ua   = Mojo::UserAgent->new();
   my $url  = Mojo::URL->new($oidc_params->{token_endpoint})
@@ -94,7 +94,7 @@ sub login($self) {
       # Decode the token; if it fails, because the key is wrong, or the token
       # is invalid or has been re-encrypted, then we throw it away and call
       # error handler
-      $self->get_helper('__oidc_token')->($token);
+      $self->app->renderer->get_helper('__oidc_token')->($self, $token);
       return $oidc_params->{on_success}->($self, $token, $success_url);
     } catch($e) {
       $self->log->error($e);
@@ -105,14 +105,14 @@ sub login($self) {
   sub session($self) {
     my $return_token = $self->param('t');
 
-    my ($token, $data) = ($self->get_helper('__oidc_token')->(undef, 0),{});
-    try { $data= $self->get_helper('__oidc_token')->() } catch($e) {}
+    my ($token, $data) = ($self->app->renderer->get_helper('__oidc_token')->($self,undef, 0),{});
+    try { $data= $self->app->renderer->get_helper('__oidc_token')->($self) } catch($e) {}
     $data->{token} = $token if($return_token);
     $self->render(json => $data)
   }
 
   sub logout($self) {
-    my $oidc_params = $self->get_helper('__oidc_params')->();
+    my $oidc_params = $self->app->renderer->get_helper('__oidc_params')->($self);
     my $idp_url = Mojo::URL->new($oidc_params->{logout_endpoint});
 
     my $success_url = $self->param('ref');

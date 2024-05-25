@@ -270,7 +270,7 @@ sub register($self, $app, $params) {
   # wrap success handler so that we can call login handler before finishing the req
   my $success_handler = $conf{on_success};
   $conf{on_success} = sub($c, $token, $url) {
-    my $token_data = $c->_oidc_token($token);
+    my $token_data = $c->app->renderer->get_helper($token_helper)->($c, $token);
     my $user = $conf{get_user}->($token_data);
     $conf{on_login}->($c, $user) if($conf{on_login});
     return $success_handler->($c, $token, $url);
@@ -301,13 +301,13 @@ sub register($self, $app, $params) {
 
   # public helper to access current user and OIDC roles
   $app->helper($current_user_helper => sub($c) {
-      return $conf{get_user}->($c->_oidc_token)
+      return $conf{get_user}->($c->app->renderer->get_helper($token_helper)->($c))
     }
   );
   $app->helper($current_user_roles_helper => sub($c) {
       my ($user, $token);
       try {
-        $token = $c->_oidc_token;
+        $token = $c->app->renderer->get_helper($token_helper)->($c);
         $user = $c->renderer($current_user_helper)->(); 
         my @roles = $conf{get_roles}->($user, $token)->@*;
         @roles = grep { defined } map { $conf{role_map}->{$_} } @roles if(defined($conf{role_map}));
