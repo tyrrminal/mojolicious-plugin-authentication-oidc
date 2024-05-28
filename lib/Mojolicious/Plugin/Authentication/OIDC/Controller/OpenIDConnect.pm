@@ -101,28 +101,28 @@ sub login($self) {
       $oidc_params->{on_error}->($self, $resp->res->json);
     }
   }
+}
 
-  sub session($self) {
-    my $return_token = $self->param('t');
+sub session($self) {
+  my $return_token = $self->param('t');
 
-    my ($token, $data) = ($self->app->renderer->get_helper('__oidc_token')->($self,undef, 0),{});
-    try { $data= $self->app->renderer->get_helper('__oidc_token')->($self) } catch($e) {}
-    $data->{token} = $token if($return_token);
-    $self->render(json => $data)
-  }
+  my ($token, $data) = ($self->app->renderer->get_helper('__oidc_token')->($self,undef, 0),{});
+  try { $data= $self->app->renderer->get_helper('__oidc_token')->($self) } catch($e) {}
+  $data->{token} = $token if($return_token);
+  $self->render(json => $data)
+}
 
-  sub logout($self) {
-    my $oidc_params = $self->app->renderer->get_helper('__oidc_params')->($self);
-    my $idp_url = Mojo::URL->new($oidc_params->{logout_endpoint});
+sub logout($self) {
+  my $oidc_params = $self->app->renderer->get_helper('__oidc_params')->($self);
+  my $idp_url = Mojo::URL->new($oidc_params->{logout_endpoint});
 
-    my $success_url = $self->param('ref');
+  my $success_url = $self->param('ref');
 
-    $idp_url->query({
-      client_id                 => $oidc_params->{client_id},
-      post_logout_redirect_uri  => $success_url,
-    });
-    $self->redirect_to($idp_url)
-  }
+  $idp_url->query({
+    client_id                 => $oidc_params->{client_id},
+    post_logout_redirect_uri  => $success_url,
+  });
+  $self->redirect_to($idp_url)
 }
 
 =head1 AUTHOR
