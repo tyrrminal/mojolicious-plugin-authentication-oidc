@@ -308,7 +308,7 @@ sub register($self, $app, $params) {
       my ($user, $token);
       try {
         $token = $c->app->renderer->get_helper($token_helper)->($c);
-        $user = $c->renderer($current_user_helper)->(); 
+        $user = $c->app->renderer->get_helper($current_user_helper)->($c); 
         my @roles = $conf{get_roles}->($user, $token)->@*;
         @roles = grep { defined } map { $conf{role_map}->{$_} } @roles if(defined($conf{role_map}));
         return [@roles];
@@ -318,7 +318,7 @@ sub register($self, $app, $params) {
   );
 
   # if `on_activity` handler exists, call it from a before_dispatch hook
-  $app->hook(before_dispatch => sub($c) { my $u; try { $u = $c->renderer($current_user_helper)->(); } catch($e) {} $conf{on_activity}->($c, $u) if($u) }) if($conf{on_activity});
+  $app->hook(before_dispatch => sub($c) { my $u; try { $u = $c->app->renderer->get_helper($current_user_helper)->($c); } catch($e) {} $conf{on_activity}->($c, $u) if($u) }) if($conf{on_activity});
   # if `make_routes` is true, register our controller actions at the appropriate paths
   # otherwise, it's up to the downstream code to do this, e.g., via OpenAPI spec
   if($conf{make_routes}) {
